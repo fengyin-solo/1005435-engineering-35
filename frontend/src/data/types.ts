@@ -36,3 +36,13 @@ export type OverviewResult = {
   cards: { label: string; value: number }[]
   modules: { name: string; created: number; pending: number; abnormal: number }[]
 }
+
+// 起步脚本铺好的示例数据成品：前端与脚本共用同一份文件、同一套口径。
+export type SeedBundle = {
+  version: string
+  sourceHash: string
+  generation: number
+  ledgerCode: string
+  modules: ModuleMeta[]
+  rows: Record<string, EntryRow[]>
+}

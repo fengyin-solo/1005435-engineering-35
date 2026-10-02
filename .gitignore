@@ -85,3 +85,6 @@ desktop.ini
 *.db
 *.pid
 *.seed
+
+# 起步脚本的运行期状态（装依赖/铺数据/复位推进到哪一步），不入库
+frontend/.workbench/

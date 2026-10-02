@@ -1,7 +1,4 @@
-import type { EntryRow } from './types'
-
-// 示例数据：首次打开时播种，之后浏览器里的改动优先，重置才会回到这份。
-export const SEED_ROWS: Record<string, EntryRow[]> = {
+{
   "hazard": [
     {
       "id": 1,
@@ -422,7 +419,7 @@ export const SEED_ROWS: Record<string, EntryRow[]> = {
       "所属隐患点": "治理工程样例2",
       "工程类型": "治理工程样例2",
       "批复日期": "2026-09-02",
-      "批复金额": 25.0,
+      "批复金额": 25,
       "承建单位": "治理工程样例2",
       "完工日期": "2026-09-02",
       "工程状态": "治理工程样例2"
@@ -793,5 +790,5 @@ export const SEED_ROWS: Record<string, EntryRow[]> = {
       "联系人": "受威胁对象样例3",
       "对象状态": "受威胁对象样例3"
     }
-  ],
+  ]
 }

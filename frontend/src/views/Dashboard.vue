@@ -7,6 +7,7 @@
       </div>
       <div class="page-actions">
         <button class="btn" type="button" @click="refresh">重新统计</button>
+        <button class="btn ghost" type="button" @click="resetAll">复位示例数据</button>
       </div>
     </header>
     <div class="stat-row">
@@ -29,7 +30,8 @@
       </tbody>
     </table>
     <footer class="page-foot">
-      <span>数据保存在本机浏览器里，换浏览器或清缓存会回到示例数据</span>
+      <span>数据版本 {{ seedVersion }}；{{ priorityRule }}</span>
+      <span>换浏览器或清缓存会回到示例数据；日常复位也可在仓库根执行 npm run reset</span>
     </footer>
   </section>
 </template>
@@ -37,16 +39,26 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 
-import { loadOverview } from '@/api/local-service'
+import { loadOverview, resetAllModules } from '@/api/local-service'
+import { SEED_PRIORITY_RULE, seedVersion as readSeedVersion } from '@/data/local-store'
 import type { OverviewResult } from '@/data/types'
 
 const cards = ref<OverviewResult['cards']>([])
 const moduleRows = ref<OverviewResult['modules']>([])
+const seedVersion = ref(readSeedVersion())
+const priorityRule = SEED_PRIORITY_RULE
 
 function refresh() {
   const payload = loadOverview()
   cards.value = payload.cards
   moduleRows.value = payload.modules
+}
+
+function resetAll() {
+  const payload = resetAllModules()
+  cards.value = payload.cards
+  moduleRows.value = payload.modules
+  seedVersion.value = readSeedVersion()
 }
 
 onMounted(refresh)

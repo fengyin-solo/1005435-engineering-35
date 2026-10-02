@@ -1,0 +1,18 @@
+{
+  "name": "geohazard-patrol-workbench",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "山地地质灾害隐患巡查与治理工作台（纯前端，仓库根起步脚本）",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "bootstrap": "node scripts/bootstrap.mjs",
+    "setup": "node scripts/bootstrap.mjs",
+    "reset": "node scripts/reset.mjs",
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "typecheck": "npm --prefix frontend run typecheck"
+  }
+}

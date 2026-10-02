@@ -1,5 +1,5 @@
 import { MODULE_BY_KEY } from '@/data/modules'
-import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
+import { allRows, countRows, listRows, resetAllRows, resetRows, saveRows } from '@/data/local-store'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
@@ -61,6 +61,13 @@ export function resetModule(key: string): PageResult {
   return listEntries(key)
 }
 
+// 日常开发用的整库复位：与仓库根 `npm run reset` 铺的是同一份示例数据，
+// 页内点一下即可让所有模块清单条数回到初始。
+export function resetAllModules(): OverviewResult {
+  resetAllRows()
+  return loadOverview()
+}
+
 export function exportEntries(key: string): { filename: string; content: string } {
   const meta = moduleMeta(key)
   const header = ['编号', ...meta.fields, '当前状态']
@@ -87,10 +94,12 @@ export function downloadEntries(key: string): void {
 export function loadOverview(): OverviewResult {
   const rows = allRows()
   const modules = [...MODULE_BY_KEY.values()].map((meta) => {
+    // 条数口径唯一：运营概览与模块清单都从 allRows() 这一份读取，
+    // 计数统一走 countRows()，不再各写一遍 entries.length。
     const entries = rows[meta.key] ?? []
     return {
       name: meta.name,
-      created: entries.length,
+      created: countRows(meta.key),
       pending: entries.filter((row) => row.pending).length,
       abnormal: entries.filter((row) => row.abnormal).length,
     }
