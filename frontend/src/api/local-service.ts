@@ -1,9 +1,24 @@
-import { MODULE_BY_KEY } from '@/data/modules'
-import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
+import canonicalSeed from '@/data/seed.json'
+import {
+  applyLedger,
+  ledgerCode,
+  SeedValidationError,
+  upsertByNaturalKey,
+  validateCanonical,
+  validateImportBatch,
+} from '@/data/seed-core'
+import { MODULE_BY_KEY, MODULES } from '@/data/modules'
+import { countRows, listRows, resetRows, saveRows } from '@/data/local-store'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
 const NEGATIVE_ACTIONS = ['撤销', '作废', '拒绝', '驳回', '停用', '忽略', '下线', '回滚']
+
+export type ImportSummary = {
+  ok: boolean
+  message: string
+  totals: { modules: number; added: number; updated: number; ledgerCreated: number }
+}
 
 export function moduleMeta(key: string): ModuleMeta {
   const meta = MODULE_BY_KEY.get(key)
@@ -61,6 +76,103 @@ export function resetModule(key: string): PageResult {
   return listEntries(key)
 }
 
+/**
+ * 导入一个业务模块的数据：走与引导脚本完全相同的管线。
+ * - 全部记录先校验，任何一条落成无效值 → 整批退回，一条都不写；
+ * - 按业务主键 upsert：同一模块连导两次只认一条（新增 0、更新 N）；
+ * - 导入收尾在治理工程台账挂一条待处理，同模块重复导入仍只挂同一条；
+ *   治理工程模块本身的导入不产生挂账。
+ */
+export function importModuleRows(key: string, incoming: unknown): ImportSummary {
+  const meta = moduleMeta(key)
+  let normalized: EntryRow[]
+  try {
+    normalized = validateImportBatch(meta, incoming)
+  } catch (error) {
+    if (error instanceof SeedValidationError) {
+      return rejected(error)
+    }
+    throw error
+  }
+
+  const { rows, added, updated } = upsertByNaturalKey(meta, listRows(key), normalized)
+  let ledgerCreated = 0
+  if (meta.key !== 'project') {
+    const today = new Date().toISOString().slice(0, 10)
+    const ledger = applyLedger(moduleMeta('project'), listRows('project'), meta, today)
+    saveRows('project', ledger.rows)
+    ledgerCreated = ledger.created ? 1 : 0
+  }
+  saveRows(key, rows)
+  return {
+    ok: true,
+    message:
+      `${meta.name}导入完成：新增 ${added} 条、更新 ${updated} 条；治理工程台账` +
+      (ledgerCreated > 0
+        ? `新增待处理 1 条（${ledgerCode(key)}）`
+        : `仍只挂 1 条（${ledgerCode(key)}），未重复挂账`),
+    totals: { modules: 1, added, updated, ledgerCreated },
+  }
+}
+
+/** 一次性导入全部示例数据：任何一处无效值整批退回重填，绝不含糊写一半。 */
+export function importSeedData(): ImportSummary {
+  const canonical = canonicalSeed as Record<string, EntryRow[]>
+  try {
+    validateCanonical(MODULES, canonical)
+  } catch (error) {
+    if (error instanceof SeedValidationError) {
+      return rejected(error)
+    }
+    throw error
+  }
+
+  const today = new Date().toISOString().slice(0, 10)
+  const projectMeta = moduleMeta('project')
+  let added = 0
+  let updated = 0
+  let ledgerCreated = 0
+
+  // 先归位各业务模块示例数据，治理工程最后收口（示例数据 + 每模块一条待处理台账）。
+  for (const meta of MODULES) {
+    if (meta.key === 'project') {
+      continue
+    }
+    const result = upsertByNaturalKey(meta, listRows(meta.key), canonical[meta.key])
+    saveRows(meta.key, result.rows)
+    added += result.added
+    updated += result.updated
+  }
+  let projectRows = upsertByNaturalKey(projectMeta, listRows('project'), canonical.project).rows
+  for (const meta of MODULES) {
+    if (meta.key === 'project') {
+      continue
+    }
+    const ledger = applyLedger(projectMeta, projectRows, meta, today)
+    projectRows = ledger.rows
+    if (ledger.created) {
+      ledgerCreated += 1
+    }
+  }
+  saveRows('project', projectRows)
+
+  return {
+    ok: true,
+    message:
+      `全部 ${MODULES.length} 个模块示例数据导入完成：新增 ${added} 条、更新 ${updated} 条；` +
+      `治理工程台账新增待处理 ${ledgerCreated} 条，同一模块重复导入不会重复挂账。`,
+    totals: { modules: MODULES.length, added, updated, ledgerCreated },
+  }
+}
+
+function rejected(error: SeedValidationError): ImportSummary {
+  return {
+    ok: false,
+    message: error.message,
+    totals: { modules: 0, added: 0, updated: 0, ledgerCreated: 0 },
+  }
+}
+
 export function exportEntries(key: string): { filename: string; content: string } {
   const meta = moduleMeta(key)
   const header = ['编号', ...meta.fields, '当前状态']
@@ -68,7 +180,7 @@ export function exportEntries(key: string): { filename: string; content: string 
   for (const row of listRows(key)) {
     lines.push([row.id, ...meta.fields.map((field) => row[field] ?? ''), row.status].join(','))
   }
-  return { filename: `${meta.name}-清单.csv`, content: `\uFEFF${lines.join('\n')}` }
+  return { filename: `${meta.name}-清单.csv`, content: '﻿' + lines.join('\n') }
 }
 
 export function downloadEntries(key: string): void {
@@ -85,12 +197,11 @@ export function downloadEntries(key: string): void {
 }
 
 export function loadOverview(): OverviewResult {
-  const rows = allRows()
-  const modules = [...MODULE_BY_KEY.values()].map((meta) => {
-    const entries = rows[meta.key] ?? []
+  const modules = MODULES.map((meta) => {
+    const entries = listRows(meta.key)
     return {
       name: meta.name,
-      created: entries.length,
+      created: countRows(meta.key),
       pending: entries.filter((row) => row.pending).length,
       abnormal: entries.filter((row) => row.abnormal).length,
     }

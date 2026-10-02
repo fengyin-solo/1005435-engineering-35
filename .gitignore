@@ -85,3 +85,9 @@ desktop.ini
 *.db
 *.pid
 *.seed
+
+# ===== 引导/复位脚本产物 =====
+# 快照与进度文件由「装依赖 -> 铺数据 -> 复位」脚本生成，不入库；
+# 规范示例数据本身在 frontend/src/data/seed.json，随仓库走。
+frontend/src/data/seed.snapshot.json
+.bootstrap-state.json

@@ -21,15 +21,53 @@
 └── docker-compose.yml
 ```
 
-## 启动
+## 启动（新人第一步，一条命令）
+
+克隆后不用手工 `npm install`、也不用去清浏览器存储，在仓库根目录跑：
+
+```bash
+make bootstrap          # 等价于 node scripts/bootstrap.mjs up
+```
+
+它按**固定次序**做两件事，插队（跳过前一步直接跑下一步）会被脚本拒绝：
+
+1. 装依赖：`frontend/` 有 lockfile 用 `npm ci`，没有就 `npm install`；
+2. 铺示例数据：读取唯一示例数据来源 `frontend/src/data/seed.json`，经
+   `frontend/src/data/seed-core.js` 这套导入管线生成快照
+   `frontend/src/data/seed.snapshot.json`（本地文件，不入库）。
+
+然后启动前端：
 
 ```bash
 cd frontend
-npm install
 npm run dev
 ```
 
 前端默认监听 `http://127.0.0.1:5173/`，dev server 不会自动打开浏览器，需要自己访问。
+首次打开会自动采用脚本铺好的快照：各业务模块清单条数回到初始，运营概览与业务模块
+天然对得上，不用手工折腾浏览器存储。
+
+分步命令（仍受次序约束）：
+
+```bash
+node scripts/bootstrap.mjs install   # 仅装依赖（none -> installed）
+node scripts/bootstrap.mjs seed      # 仅铺数据（installed -> seeded）
+node scripts/bootstrap.mjs up        # 默认：按当前进度补齐剩余步骤
+```
+
+脚本路径全部相对脚本自身位置解析，从任何目录调用、克隆到任何盘符都能跑，不钉死绝对路径。
+
+## 日常开发复位
+
+数据玩乱了，一条命令回到初始（各模块清单条数、运营概览全部复位）：
+
+```bash
+make reset              # 等价于 node scripts/reset.mjs
+```
+
+复位与引导共用同一份示例数据来源和同一套导入管线，只是重新生成一份带新 token 的快照；
+浏览器刷新后发现 token 变化，会整包丢弃 localStorage 里的中间状态、采用新快照。
+复位可反复执行，阶段保持在「已铺数据」。
 
 生产构建：
 
@@ -37,6 +75,27 @@ npm run dev
 cd frontend
 npm run build
 ```
+
+## 数据来源与口径优先级
+
+- **唯一示例数据来源**：`frontend/src/data/seed.json`；模块元数据在
+  `frontend/src/data/modules.json`。引导脚本、复位脚本（Node）和浏览器应用都只认这两份，
+  不再各写一份。
+- **同构导入管线**：`frontend/src/data/seed-core.js` 同时被脚本和应用引用，
+  导入、去重、台账挂账、校验规则只有一份实现。
+- 当浏览器 `localStorage` 与脚本铺好的快照两处口径顶上时，**以脚本快照为准**，
+  token 对不上就整包覆盖浏览器数据（规则实现在 `frontend/src/data/local-store.ts`）。
+- 条数口径只有一份：模块页表底、运营概览、脚本打印都走数据层缓存
+  （`allRows() / countRows()`），不存在两套数字。
+
+### 导入约定
+
+- 每个模块按**业务主键**（该模块第一个字段，如隐患编号、工程编号）upsert；
+  同一条业务模块的数据走两次导入，只认一条（第二次为更新，不新增）。
+- 导入收尾驱动**治理工程台账**：每导入一个业务模块，治理工程里就挂一条
+  待处理台账（工程编号 `AUTO-LEDGER-<模块>`）；同一模块重复导入仍只挂这一条。
+- 任何一条记录落成无效值（空值 / 空串 / NaN、非法状态、主键缺失、id 重复等），
+  **整批退回**，一条都不写，并逐条列出退回原因。
 
 ## 业务模块
 
@@ -68,4 +127,6 @@ npm run build
 - 字段、状态、动作与流转目标集中在 `frontend/src/data/modules.ts`；示例数据在
   `frontend/src/data/seed.ts`。
 - 状态流转只允许在 `local-service.ts` 里改，页面组件不做业务判断。
-- 想回到初始数据：清掉浏览器里 `geohazard-patrol:entries` 这一项，或调用 `resetModule(模块)`。
+- 想回到初始数据：仓库根目录 `make reset`（或 `node scripts/reset.mjs`）；
+  单个模块也可调用 `resetModule(模块)`。运营概览页另有「导入示例数据」按钮，
+  走同一套导入管线（去重、台账挂账、无效值整批退回）。
